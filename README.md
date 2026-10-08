@@ -102,8 +102,6 @@ Nothing in this repository has been deployed.
   live. Sites that block automated reading are reported as blocked; use the extension or paste the description.
 - **Not yet integrated:** Context.dev (no adapter yet; the research provider interface is ready for one) and an
   Anthropic-native provider (Claude can be used through OpenRouter or `AI_COMPAT_*`).
-- **SSRF:** the fetcher resolves DNS and rejects private ranges on every hop, but does not pin the resolved IP for the
-  connection itself (DNS-rebinding window).
 - **Languages:** only an English UI dictionary ships; strings live in `apps/web/lib/i18n/en.ts`, ready for more languages.
 - **E2E automation:** there is no automated browser E2E suite yet. The workflow was exercised by hand against a local
   Supabase stack, and the AI stages are covered by pipeline tests with deterministic test doubles. They have not run

@@ -1,5 +1,7 @@
 import { lookup } from "node:dns/promises";
+import dns from "node:dns";
 import ipaddr from "ipaddr.js";
+import { Agent, fetch as undiciFetch } from "undici";
 import { ElevateError } from "../util/errors";
 import { TIMEOUTS, withTimeout } from "../util/timeout";
 
@@ -8,6 +10,8 @@ import { TIMEOUTS, withTimeout } from "../util/timeout";
  * - only http/https on default ports
  * - resolves DNS and rejects private, loopback, link-local, multicast and reserved ranges
  * - follows redirects manually (max 5) and re-validates every hop
+ * - pins the check to the connection: the socket only opens to addresses validated by the
+ *   same lookup, so a DNS answer cannot change between the check and the connect (rebinding)
  * - caps body size and enforces a timeout
  * It does NOT try to bypass bot protection, logins or CAPTCHAs: such responses are reported as blocked.
  */
@@ -89,6 +93,40 @@ export function looksBlocked(status: number, body: string): boolean {
   return !hasJobData && BLOCK_MARKERS.some((re) => re.test(head)) && body.length < 200_000;
 }
 
+/** Connection-time lookup that refuses private addresses. */
+const pinnedAgent = new Agent({
+  connect: {
+    lookup(hostname, options, callback) {
+      dns.lookup(hostname, { all: true, verbatim: true }, (err, addresses) => {
+        if (err) return callback(err, "", 4);
+        const list = addresses as dns.LookupAddress[];
+        if (list.length === 0 || list.some((a) => !isPublicAddress(a.address))) {
+          return callback(Object.assign(new Error("Blocked private address"), { code: "ELEVATE_BLOCKED" }), "", 4);
+        }
+        if ((options as { all?: boolean }).all) return (callback as unknown as (e: null, a: dns.LookupAddress[]) => void)(null, list);
+        return callback(null, list[0]!.address, list[0]!.family);
+      });
+    },
+  },
+});
+
+function isBlockedError(e: unknown, depth = 0): boolean {
+  if (!e || typeof e !== "object" || depth > 6) return false;
+  const err = e as { code?: unknown; cause?: unknown; errors?: unknown[] };
+  if (err.code === "ELEVATE_BLOCKED") return true;
+  return isBlockedError(err.cause, depth + 1) || (Array.isArray(err.errors) && err.errors.some((x) => isBlockedError(x, depth + 1)));
+}
+
+/** Exposed for tests: fetch through the pinned agent without the friendly pre-check. */
+export async function fetchThroughPinnedAgent(url: string): Promise<"ok" | "blocked" | "failed"> {
+  try {
+    await undiciFetch(url, { dispatcher: pinnedAgent, signal: AbortSignal.timeout(8000) });
+    return "ok";
+  } catch (e) {
+    return isBlockedError(e) ? "blocked" : "failed";
+  }
+}
+
 export async function safeFetchPage(rawUrl: string, opts: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<SafeFetchResult> {
   let url = assertPublicUrlShape(rawUrl);
   return withTimeout(
@@ -97,16 +135,26 @@ export async function safeFetchPage(rawUrl: string, opts: { signal?: AbortSignal
     async (signal) => {
       for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
         await assertResolvesPublic(url);
-        const res = await fetch(url, {
-          redirect: "manual",
-          signal,
+        let res: Response;
+        try {
+          res = (await undiciFetch(url, {
+            redirect: "manual",
+            signal,
+            dispatcher: pinnedAgent,
           headers: {
             // Identify honestly. We do not impersonate browsers to get around bot protection.
             "user-agent": "ElevateJobReader/1.0 (+https://github.com/elevate; fetches a single job page on user request)",
             accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
             "accept-language": "en;q=0.9,*;q=0.5",
           },
-        });
+          })) as unknown as Response;
+        } catch (cause) {
+          if (signal.aborted) throw cause;
+          const blocked = isBlockedError(cause);
+          throw blocked
+            ? new ElevateError("blocked_url", "That link points to a private network address and can't be analyzed.", { cause })
+            : new ElevateError("fetch_failed", "We couldn't reach that website. Check the link and try again.", { cause });
+        }
         if (res.status >= 300 && res.status < 400) {
           const loc = res.headers.get("location");
           if (!loc) throw new ElevateError("fetch_failed", "The job page redirected without a destination.");

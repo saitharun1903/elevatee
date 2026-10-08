@@ -80,7 +80,8 @@ unchanged posting reuses the existing analysis (no new AI/research spend); a cha
   data to someone else's row. Verified by `apps/web/tests/rls.test.ts` against a real Postgres.
 - SSRF: http/https only, default ports, no credentials in URLs, DNS resolved and private/loopback/link-local/metadata
   ranges rejected on every redirect hop, size and time limits. Bot walls and login walls are reported, never bypassed.
-  Known gap: DNS rebinding between the check and the connection is not pinned (see README limitations).
+  The same validation runs inside the connection's own DNS lookup, so a DNS answer can't change between the check
+  and the connect (DNS-rebinding defence, tested against a public name that resolves to 127.0.0.1).
 - Resume files: magic-byte sniffing (not MIME), 5 MB cap, page cap, private R2 objects, 5-minute signed download URLs.
 - Secrets exist only in server env. The extension holds only the user's own session tokens.
 - Logs carry ids, stages, durations and statuses; content keys are redacted.

@@ -203,6 +203,7 @@ export const en = {
     },
     actions: {
       apply: "Apply",
+      applied: "Applied ✓",
       save: "Save",
       saved: "Saved",
       prepare: "Prepare",
@@ -567,6 +568,11 @@ export const en = {
     chrome: "Add to Chrome",
     edge: "Add to Microsoft Edge",
     notPublished: "Store listings aren't configured for this deployment. Developers can load the extension from apps/extension/build (see its README).",
+  },
+  notifications: {
+    label: "Notifications",
+    labelUnread: "Notifications, {n} unread",
+    empty: "Nothing yet. You'll be told here when an analysis finishes or an interview is scheduled.",
   },
   search: {
     placeholder: "Search your jobs…",

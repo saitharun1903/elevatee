@@ -6,6 +6,7 @@ import { clsx } from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { Mark } from "@/components/brand";
 import { buttonClass } from "@/components/ui/button";
+import { Notifications } from "@/components/notifications";
 import { SearchDialog } from "@/components/search-dialog";
 import { browserSupabase } from "@/lib/client/supabase";
 import { getT } from "@/lib/i18n";
@@ -136,6 +137,7 @@ export function AppShell({ email, children }: { email: string | null; children: 
                 {t("nav.analyze")}
               </Link>
             </span>
+            <Notifications />
             <AccountMenu email={email} />
           </div>
         </div>

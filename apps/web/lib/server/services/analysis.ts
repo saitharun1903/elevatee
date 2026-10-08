@@ -322,7 +322,9 @@ export async function startAnalysis(
         });
       }
       log.info("analysis.finished", { requestId, jobId, analysisId, status, durationMs: Date.now() - started, mode });
-      await notify(db, userId, {
+      // Notify for full analyses and for any failure; quick re-comparisons would only add noise.
+      const failed = status === "FAILED" || status === "TIMEOUT";
+      if (mode === "full" || failed) await notify(db, userId, {
         kind: status === "FAILED" || status === "TIMEOUT" ? "analysis_failed" : "analysis_completed",
         title: status === "FAILED" || status === "TIMEOUT" ? "Analysis didn't finish" : "Analysis ready",
         body: [job.title, job.company].filter(Boolean).join(" · ") || null,

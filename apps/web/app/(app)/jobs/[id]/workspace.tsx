@@ -179,9 +179,21 @@ export function Workspace({ ws, tab, locale, timezone, openPractice }: Workspace
           {meta.length ? <p className="mt-3 text-ink-2">{meta.join(" · ")}</p> : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={onApply} busy={busy === "apply"} disabled={!applyUrl && !!ws.application && ws.application.status !== "interested"}>
-            {t("workspace.actions.apply")}
-          </Button>
+          {ws.application && ws.application.status !== "interested" ? (
+            applyUrl ? (
+              <a href={applyUrl} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary")}>
+                {t("workspace.actions.applied")} ↗
+              </a>
+            ) : (
+              <Link href={tabHref("application")} className={buttonClass("secondary")}>
+                {t("workspace.actions.applied")}
+              </Link>
+            )
+          ) : (
+            <Button onClick={onApply} busy={busy === "apply"}>
+              {t("workspace.actions.apply")}
+            </Button>
+          )}
           <Button variant="secondary" onClick={toggleSave} busy={busy === "save"} aria-pressed={saved}>
             {saved ? t("workspace.actions.saved") : t("workspace.actions.save")}
           </Button>
