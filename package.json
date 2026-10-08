@@ -1,0 +1,20 @@
+{
+  "name": "elevate",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Elevate — Know the Job Before You Apply.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @elevate/web",
+    "build": "npm run build -w @elevate/web && npm run build -w @elevate/extension",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}

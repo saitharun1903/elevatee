@@ -1,0 +1,16 @@
+node_modules
+.next
+dist
+out
+coverage
+.env
+.env.*
+!.env.example
+*.log
+.turbo
+.vercel
+apps/extension/build
+playwright-report
+test-results
+supabase/.temp
+supabase/.branches

@@ -1,0 +1,14 @@
+{
+  "appName": {
+    "message": "Elevate — Know the job before you apply",
+    "description": "Extension name shown in the browser and the store."
+  },
+  "appDescription": {
+    "message": "Analyze the job posting you're viewing with Elevate: requirements, process, questions and your fit. Reads pages only on click.",
+    "description": "Extension description (max 132 characters)."
+  },
+  "actionTitle": {
+    "message": "Analyze this job with Elevate",
+    "description": "Tooltip for the toolbar icon."
+  }
+}
