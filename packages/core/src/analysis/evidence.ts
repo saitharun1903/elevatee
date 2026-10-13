@@ -27,11 +27,20 @@ export class QuoteIndex {
     this.bare = stripPunct(this.norm);
   }
 
-  /** True when `quote` appears in the source (ignoring case, whitespace, punctuation and quote style). */
-  contains(quote: string | null | undefined): boolean {
+  /**
+   * True when `quote` appears in the source (ignoring case, whitespace, punctuation and quote style).
+   * Evidence quotes must be meaningful: at least two words and 8 characters, so a model cannot
+   * "verify" a claim with a fragment like "in". Pass `short: true` for exact short terms such as
+   * a name, job title or employer.
+   */
+  contains(quote: string | null | undefined, opts: { short?: boolean } = {}): boolean {
     if (!quote) return false;
     const q = normalize(quote).replace(/^\.{3}|\.{3}$/g, "").trim();
     if (q.length < 2) return false;
+    if (!opts.short) {
+      const words = stripPunct(q).split(" ").filter(Boolean);
+      if (words.length < 2 || stripPunct(q).length < 8) return false;
+    }
     if (this.norm.includes(q)) return true;
     const bq = stripPunct(q);
     return bq.length >= 2 && this.bare.includes(bq);

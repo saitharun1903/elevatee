@@ -103,15 +103,15 @@ export function verifyParsedResume(text: string, data: z.infer<typeof Draft>): {
   const idx = new QuoteIndex(text);
   const warnings: string[] = [];
   const contact = extractContact(text);
-  const keep = (s: string | null) => (s && idx.contains(s) ? s : null);
+  const keep = (s: string | null) => (s && idx.contains(s, { short: true }) ? s : null);
 
-  const skills = data.skills.filter((s) => containsTerm(text, s) || idx.contains(s));
+  const skills = data.skills.filter((s) => containsTerm(text, s) || idx.contains(s, { short: true }));
   if (skills.length < data.skills.length) warnings.push(`${data.skills.length - skills.length} skill(s) were not found verbatim in the resume and were removed.`);
 
   const experience = data.experience.map((e) => {
     const title = keep(e.title);
     const organization = keep(e.organization);
-    const highlights = e.highlights.filter((h) => idx.contains(h));
+    const highlights = e.highlights.filter((h) => idx.contains(h, { short: true }));
     const uncertain = (e.title !== null && title === null) || (e.organization !== null && organization === null) || !validPeriod(e.start) || !validPeriod(e.end);
     return {
       title: title ?? e.title,
@@ -146,9 +146,9 @@ export function verifyParsedResume(text: string, data: z.infer<typeof Draft>): {
     skills,
     experience,
     education,
-    certifications: data.certifications.filter((c) => idx.contains(c)),
-    projects: data.projects.filter((p) => idx.contains(p.name)),
-    achievements: data.achievements.filter((a) => idx.contains(a)),
+    certifications: data.certifications.filter((c) => idx.contains(c, { short: true })),
+    projects: data.projects.filter((p) => idx.contains(p.name, { short: true })),
+    achievements: data.achievements.filter((a) => idx.contains(a, { short: true })),
     languages: data.languages.filter((l) => containsTerm(text, l)),
   });
   return { parsed, warnings };

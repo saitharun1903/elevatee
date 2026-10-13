@@ -65,23 +65,26 @@ export async function generateStructured<T>(
     signal?: AbortSignal;
   },
 ): Promise<{ data: T; provider: string; model: string }> {
+  // One deadline covers every attempt, so callers can size their route's maxDuration safely.
+  return withTimeout(opts.label, opts.timeoutMs ?? TIMEOUTS.ai, (signal) => attemptStructured(provider, opts, signal), opts.signal);
+}
+
+async function attemptStructured<T>(
+  provider: AIProvider,
+  opts: { label: string; system: string; user: string; schema: z.ZodType<T>; temperature?: number; maxOutputTokens?: number },
+  signal: AbortSignal,
+): Promise<{ data: T; provider: string; model: string }> {
   const messages: ChatMessage[] = [{ role: "user", content: opts.user }];
   let lastError = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    const result = await withTimeout(
-      opts.label,
-      opts.timeoutMs ?? TIMEOUTS.ai,
-      (signal) =>
-        provider.complete({
-          system: opts.system,
-          messages,
-          json: true,
-          temperature: opts.temperature ?? 0.1,
-          maxOutputTokens: opts.maxOutputTokens ?? 4096,
-          signal,
-        }),
-      opts.signal,
-    );
+    const result = await provider.complete({
+      system: opts.system,
+      messages,
+      json: true,
+      temperature: opts.temperature ?? 0.1,
+      maxOutputTokens: opts.maxOutputTokens ?? 4096,
+      signal,
+    });
     try {
       const parsed = opts.schema.safeParse(extractJsonObject(result.text));
       if (parsed.success) return { data: parsed.data, provider: result.provider, model: result.model };

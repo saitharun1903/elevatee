@@ -11,7 +11,7 @@ import {
 import type { Db } from "../supabase";
 import { ai } from "../providers";
 import { log } from "../log";
-import { putObject, storageConfigured } from "../storage";
+import { deleteObject, putObject, storageConfigured } from "../storage";
 import type { ResumeVersionRow } from "./rows";
 import { trackEvent } from "./events";
 
@@ -62,19 +62,25 @@ export async function createResumeVersion(ctx: { db: Db; userId: string; request
 
   // Resolve or create the parent resume.
   let resumeId = input.resumeId ?? null;
+  let createdParent = false;
   if (resumeId) {
     const { data } = await ctx.db.from("resumes").select("id").eq("id", resumeId).maybeSingle();
     if (!data) throw new ElevateError("not_found", "That resume doesn't exist.");
   } else {
     const { count } = await ctx.db.from("resumes").select("id", { count: "exact", head: true });
     const label = input.label?.trim() || input.file?.name.replace(/\.(pdf|docx)$/i, "").slice(0, 120) || "Resume";
-    const { data, error } = await ctx.db
+    let { data, error } = await ctx.db
       .from("resumes")
       .insert({ user_id: ctx.userId, label, is_primary: (count ?? 0) === 0 })
       .select("id")
       .single<{ id: string }>();
+    if (error?.code === "23505") {
+      // A concurrent first upload became primary already; this one is added as a secondary resume.
+      ({ data, error } = await ctx.db.from("resumes").insert({ user_id: ctx.userId, label, is_primary: false }).select("id").single<{ id: string }>());
+    }
     if (error || !data) throw new ElevateError("internal", "Couldn't save the resume.");
     resumeId = data.id;
+    createdParent = true;
   }
 
   const { data: last } = await ctx.db
@@ -141,7 +147,12 @@ export async function createResumeVersion(ctx: { db: Db; userId: string; request
     })
     .select("*")
     .single<ResumeVersionRow>();
-  if (error || !row) throw new ElevateError("internal", "Couldn't save the resume version.");
+  if (error || !row) {
+    // Don't leave an empty resume or an orphaned file behind a failed upload.
+    if (storageKey) await deleteObject(storageKey).catch(() => {});
+    if (createdParent) await ctx.db.from("resumes").delete().eq("id", resumeId);
+    throw new ElevateError(error?.code === "23505" ? "conflict" : "internal", error?.code === "23505" ? "Another upload for this resume finished at the same moment. Try again." : "Couldn't save the resume version.");
+  }
   await ctx.db.from("resumes").update({ updated_at: new Date().toISOString() }).eq("id", resumeId);
   await trackEvent(ctx.db, ctx.userId, "resume_uploaded", { sourceType, parseStatus });
   return { resumeId, version: row };

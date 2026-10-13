@@ -160,49 +160,63 @@ export async function runAnalysisPipeline(deps: PipelineDeps, input: PipelineInp
     // ---- Research ---------------------------------------------------------------------
     await set("RESEARCHING");
     let research: ResearchBundle | null = null;
-    const cached = input.forceResearch ? null : await store.getResearch();
-    if (cached && Date.now() - new Date(cached.retrievedAt).getTime() < RESEARCH_STALE_MS) {
-      research = cached;
-      t.finish("research", "completed", "Using research retrieved earlier for this job.", cached.provider);
+    // The last good research for this job. A failed refresh must never destroy it.
+    const previous = await store.getResearch();
+    const fresh = previous && Date.now() - new Date(previous.retrievedAt).getTime() < RESEARCH_STALE_MS;
+    if (previous && fresh && !input.forceResearch) {
+      research = previous;
+      t.finish("research", "completed", "Using research retrieved earlier for this job.", previous.provider);
     } else if (!deps.research) {
+      research = previous;
       t.finish("research", "unavailable", RESEARCH_UNAVAILABLE_REASON);
       await store.emit("stage_unavailable", "research", { reason: RESEARCH_UNAVAILABLE_REASON });
     } else {
       t.start("research", deps.research.id);
       await store.emit("research_started", "research", { provider: deps.research.id });
+      const keptNote = previous ? " Earlier research was kept." : "";
       try {
         const queries = buildQueries(job, classification);
         if (queries.length === 0) {
+          research = previous;
           t.finish("research", "skipped", "The posting has no company or title to research.");
         } else {
           const gathered = await gatherSources(deps.research, job, queries, { signal, newId: deps.newId });
+          const allFailed = gathered.failedQueries.length === queries.length;
           let claims: ResearchClaim[] = [];
+          let synthesisFailed = false;
           let note: string | null = gathered.failedQueries.length ? `${gathered.failedQueries.length} of ${queries.length} searches failed.` : null;
-          if (deps.ai && gathered.sources.length) {
+          if (!allFailed && deps.ai && gathered.sources.length) {
             try {
               claims = (await synthesizeClaims(deps.ai, job, gathered.sources, { signal, newId: deps.newId })).claims;
             } catch (err) {
               if (signal.aborted) throw err;
+              synthesisFailed = true;
               note = `Sources were found but could not be summarised: ${reasonOf(err).reason}`;
             }
           } else if (!deps.ai) {
             note = "Sources are listed without a summary because no AI provider is configured.";
           }
-          research = await store.saveResearch({
-            sources: gathered.sources,
-            claims,
-            retrievedAt: now(),
-            provider: deps.research.id,
-            status: gathered.failedQueries.length === queries.length ? "failed" : "completed",
-            error: note,
-          });
-          const allFailed = gathered.failedQueries.length === queries.length;
-          t.finish("research", allFailed ? "failed" : "completed", allFailed ? "All research searches failed." : note);
+          if (allFailed || (synthesisFailed && previous)) {
+            // Keep the last good bundle; report the failure on the stage only.
+            research = previous;
+            t.finish("research", "failed", `${allFailed ? "All research searches failed." : note}${keptNote}`);
+          } else {
+            research = await store.saveResearch({
+              sources: gathered.sources,
+              claims,
+              retrievedAt: now(),
+              provider: deps.research.id,
+              status: "completed",
+              error: note,
+            });
+            t.finish("research", "completed", note);
+          }
         }
       } catch (err) {
         if (signal.aborted) throw err;
+        research = previous;
         const r = reasonOf(err);
-        t.finish("research", r.outcome, r.reason);
+        t.finish("research", r.outcome, `${r.reason}${keptNote}`);
       }
     }
 

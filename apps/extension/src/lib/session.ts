@@ -2,13 +2,14 @@
  * The user's own Elevate session (Supabase access + refresh token) for the extension.
  *
  * Stored in chrome.storage.local, never sent anywhere except APP_URL. Refresh is proactive
- * (< 60 s to expiry) and single-flight: concurrent callers share one refresh, and across
+ * (< 9 min to expiry) and single-flight: concurrent callers share one refresh, and across
  * extension contexts (side panels in several windows, service worker) a Web Lock serializes
  * refreshes so a rotated refresh token is never used twice.
  */
 
 export const SESSION_KEY = "elevate.session";
-export const REFRESH_SKEW_SECONDS = 60;
+// The server refuses tokens with < 8 min left (long background jobs), so refresh before that.
+export const REFRESH_SKEW_SECONDS = 9 * 60;
 
 export interface Session {
   accessToken: string;

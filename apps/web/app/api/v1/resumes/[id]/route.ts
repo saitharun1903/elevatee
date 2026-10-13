@@ -12,10 +12,14 @@ export const PATCH = authed<{ id: string }>("resumes.patch", async (ctx) => {
   const { data: exists } = await ctx.db.from("resumes").select("id").eq("id", id).maybeSingle();
   if (!exists) throw new ElevateError("not_found", "Resume not found.");
   if (body.primary) {
-    await ctx.db.from("resumes").update({ is_primary: false }).eq("is_primary", true).neq("id", id);
-    await ctx.db.from("resumes").update({ is_primary: true }).eq("id", id);
+    // One statement flips both rows, so there is never zero or two primary resumes.
+    const { error } = await ctx.db.rpc("set_primary_resume", { target: id });
+    if (error) throw new ElevateError("internal", "Couldn't change your primary resume.");
   }
-  if (body.label) await ctx.db.from("resumes").update({ label: body.label }).eq("id", id);
+  if (body.label) {
+    const { error } = await ctx.db.from("resumes").update({ label: body.label }).eq("id", id);
+    if (error) throw new ElevateError("internal", "Couldn't rename the resume.");
+  }
   return json(ctx.req, { ok: true });
 });
 

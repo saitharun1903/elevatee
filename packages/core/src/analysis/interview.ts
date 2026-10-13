@@ -47,7 +47,11 @@ const Step = z.object({
 });
 export type InterviewStep = z.infer<typeof Step>;
 
-function systemPrompt(ctx: InterviewContext): string {
+/** Posting-derived header fields go into the system prompt, so flatten and cap them. */
+const clean = (v: string | null, max = 120) => (v ? v.replace(/[\r\n<>{}\x60]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : null);
+
+function systemPrompt(raw: InterviewContext): string {
+  const ctx = { ...raw, jobTitle: clean(raw.jobTitle), company: clean(raw.company), location: clean(raw.location), jobFamily: clean(raw.jobFamily, 80), seniority: clean(raw.seniority, 40) };
   return `You are a realistic interviewer for this job, running a practice interview.
 ${UNTRUSTED_DATA_POLICY}
 ${MODE_BRIEF[ctx.mode]}
@@ -78,7 +82,8 @@ export async function interviewStep(ai: AIProvider, ctx: InterviewContext, turns
   const transcript = turns.map((t) => `${t.role === "interviewer" ? "INTERVIEWER" : "CANDIDATE"}: ${t.content}`).join("\n\n");
   const user = [
     fenceUntrusted("job_posting", contextBlock(ctx), 30_000),
-    turns.length ? fenceUntrusted("candidate_answer", transcript, 30_000) : "The interview is starting now.",
+    // Keep the most recent part of a long transcript so the latest answer is always judged.
+    turns.length ? fenceUntrusted("candidate_answer", transcript.slice(-30_000), 30_000) : "The interview is starting now.",
     asked >= MOCK_INTERVIEW_QUESTION_COUNT ? "All questions have been asked. Give feedback on the last answer and finish with done=true and a summary." : `Questions asked so far: ${asked}.`,
   ].join("\n\n");
   const { data } = await generateStructured(ai, {

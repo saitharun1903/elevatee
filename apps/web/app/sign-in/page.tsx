@@ -3,13 +3,14 @@ import { Wordmark } from "@/components/brand";
 import { SignInForm } from "./sign-in-form";
 import { isSupabaseConfigured, publicEnv } from "@/lib/env";
 import { getT } from "@/lib/i18n";
+import { safeNext } from "@/lib/safe-redirect";
 
 const t = getT();
 export const metadata: Metadata = { title: t("nav.signIn") };
 
 export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const sp = await searchParams;
-  const next = sp.next?.startsWith("/") && !sp.next.startsWith("//") ? sp.next : "/home";
+  const next = safeNext(sp.next);
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="px-4 py-5 sm:px-8">

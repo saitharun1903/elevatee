@@ -81,6 +81,19 @@ export function InterviewSession({ initial }: { initial: SessionData }) {
     }
   }
 
+  async function resume() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/v1/mock-interviews/${s.id}/continue`, { method: "POST", timeoutMs: 60_000 });
+      router.refresh();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function end() {
     setBusy(true);
     try {
@@ -151,6 +164,20 @@ export function InterviewSession({ initial }: { initial: SessionData }) {
             </Button>
           </div>
         </form>
+      ) : s.status === "active" ? (
+        // The last answer was saved but the next step wasn't: let the user recover or stop.
+        <div className="flex flex-col gap-3 border-t border-line pt-4">
+          <p className="text-small text-ink-2">{t("interviews.stalled")}</p>
+          {error ? <ErrorState message={error} /> : null}
+          <div className="flex justify-between gap-2">
+            <Button variant="ghost" onClick={end} disabled={busy}>
+              {t("interviews.end")}
+            </Button>
+            <Button busy={busy} onClick={resume}>
+              {t("interviews.resume")}
+            </Button>
+          </div>
+        </div>
       ) : null}
       <div ref={endRef} />
     </div>

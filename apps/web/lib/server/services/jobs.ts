@@ -113,15 +113,21 @@ export interface JobListItem {
 }
 
 export async function listJobs(db: Db, q: z.infer<typeof JobListQuery>): Promise<JobListItem[]> {
+  // Saved / application / status filters are inner joins in SQL, so older jobs are never cut off by the limit.
+  const savedEmbed = q.view === "saved" ? "saved_jobs!inner(job_id)" : "saved_jobs(job_id)";
+  const appsEmbed = q.view === "applications" || q.status ? "applications!inner(status)" : "applications(status)";
   let query = db
     .from("jobs")
     .select(
-      "id, title, company, location, workplace_type, source_platform, posted_at, created_at, archived_at, saved_jobs(job_id), applications(status), job_analyses(status, created_at), fit_analyses:candidate_analyses(created_at, fit_analyses(score))",
+      `id, title, company, location, workplace_type, source_platform, posted_at, created_at, archived_at, ${savedEmbed}, ${appsEmbed}, job_analyses(status, created_at), fit_analyses:candidate_analyses(created_at, fit_analyses(score))`,
     )
-    .limit(q.limit);
+    // Fit is computed per row, so rank a wider window when sorting by it.
+    .limit(q.sort === "fit" ? 500 : q.limit);
   query = q.view === "archived" ? query.not("archived_at", "is", null) : query.is("archived_at", null);
+  if (q.status) query = query.eq("applications.status", q.status);
   if (q.q) {
-    const term = q.q.replace(/[%_,()]/g, " ").trim();
+    // Strip PostgREST filter syntax characters; the term is only ever a substring match.
+    const term = q.q.replace(/[%_,()"'*:\\]/g, " ").replace(/\s+/g, " ").trim();
     if (term) query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%,location.ilike.%${term}%`);
   }
   if (q.sort === "posted") query = query.order("posted_at", { ascending: false, nullsFirst: false });
@@ -165,10 +171,7 @@ export async function listJobs(db: Db, q: z.infer<typeof JobListQuery>): Promise
       fitScore: asArray(latestFit?.fit_analyses)[0]?.score ?? null,
     };
   });
-  if (q.view === "saved") items = items.filter((i) => i.saved);
-  if (q.view === "applications") items = items.filter((i) => i.applicationStatus !== null);
-  if (q.status) items = items.filter((i) => i.applicationStatus === q.status);
-  if (q.sort === "fit") items.sort((a, b) => (b.fitScore ?? -1) - (a.fitScore ?? -1));
+  if (q.sort === "fit") items = items.sort((a, b) => (b.fitScore ?? -1) - (a.fitScore ?? -1)).slice(0, q.limit);
   return items;
 }
 

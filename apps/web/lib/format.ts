@@ -2,7 +2,8 @@ import type { SalaryRange } from "@elevate/core";
 
 /** Locale-aware formatting. Nothing defaults to a currency or time zone. */
 
-export function formatDate(iso: string | null | undefined, locale = "en", opts: Intl.DateTimeFormatOptions = { dateStyle: "medium" }, timeZone?: string | null) {
+export function formatDate(iso: string | null | undefined, locale = "en", opts: Intl.DateTimeFormatOptions | undefined = { dateStyle: "medium" }, timeZone?: string | null) {
+  opts ??= { dateStyle: "medium" };
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;

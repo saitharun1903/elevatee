@@ -287,9 +287,9 @@ export function verifyIntelligence(
     : data.education;
 
   const proposed = {
-    title: data.proposed?.title && index.contains(data.proposed.titleQuote) ? data.proposed.title : null,
-    company: data.proposed?.company && index.contains(data.proposed.companyQuote) ? data.proposed.company : null,
-    location: data.proposed?.location && index.contains(data.proposed.locationQuote) ? data.proposed.location : null,
+    title: data.proposed?.title && index.contains(data.proposed.titleQuote, { short: true }) ? data.proposed.title : null,
+    company: data.proposed?.company && index.contains(data.proposed.companyQuote, { short: true }) ? data.proposed.company : null,
+    location: data.proposed?.location && index.contains(data.proposed.locationQuote, { short: true }) ? data.proposed.location : null,
   };
 
   return {

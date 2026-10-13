@@ -165,7 +165,7 @@ function ParsedView({ p }: { p: ParsedResume }) {
   );
 }
 
-export function ResumeManager({ resumes, locale, storage, aiAvailable, returnTo }: { resumes: ResumeItem[]; locale: string; storage: boolean; aiAvailable: boolean; returnTo: string | null }) {
+export function ResumeManager({ resumes, locale, timezone, storage, aiAvailable, returnTo }: { resumes: ResumeItem[]; locale: string; timezone: string; storage: boolean; aiAvailable: boolean; returnTo: string | null }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(resumes[0]?.resume_versions[0]?.id ?? null);
@@ -248,7 +248,7 @@ export function ResumeManager({ resumes, locale, storage, aiAvailable, returnTo 
                         <span className={clsx(v.parse_status === "parsed" ? "text-accent" : v.parse_status === "failed" ? "text-signal" : "text-caution")}>
                           {v.parse_status === "parsed" ? t("profile.parsed") : v.parse_status === "failed" ? t("profile.failed") : t("profile.textOnly")}
                         </span>
-                        {formatDate(v.created_at, locale)}
+                        {formatDate(v.created_at, locale, undefined, timezone)}
                       </span>
                     </button>
                     {open === v.id ? (

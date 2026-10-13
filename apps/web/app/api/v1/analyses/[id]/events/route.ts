@@ -7,6 +7,8 @@ export const OPTIONS = preflight;
 
 const POLL_MS = 750;
 const STREAM_LIMIT_MS = 270_000;
+const PING_MS = 15_000;
+const SWEEP_MS = 30_000;
 
 /**
  * GET /api/v1/analyses/:id/events — Server-Sent Events.
@@ -25,17 +27,37 @@ export const GET = authed<{ id: string }>("analyses.events", async (ctx) => {
   const encoder = new TextEncoder();
   const started = Date.now();
 
+  let closed = false;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      // Every write is guarded: once the client has gone, enqueue/close throw and must not crash.
       const send = (event: string, data: unknown, id?: number) => {
-        controller.enqueue(encoder.encode(`${id !== undefined ? `id: ${id}\n` : ""}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`${id !== undefined ? `id: ${id}\n` : ""}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          closed = true;
+        }
+      };
+      const ping = () => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(": ping\n\n"));
+        } catch {
+          closed = true;
+        }
       };
       let lastStatus: string | null = null;
       let lastStages = "";
+      let lastSweep = 0;
+      let lastPing = Date.now();
       try {
         send("ready", { analysisId });
-        while (!ctx.req.signal.aborted) {
-          await db.rpc("close_stale_analyses");
+        while (!closed && !ctx.req.signal.aborted) {
+          if (Date.now() - lastSweep > SWEEP_MS) {
+            lastSweep = Date.now();
+            await db.rpc("close_stale_analyses");
+          }
           const [{ data: events }, { data: analysis }] = await Promise.all([
             db.from("analysis_events").select("id, type, stage, payload, created_at").eq("analysis_id", analysisId).gt("id", lastId).order("id").limit(100),
             db.from("job_analyses").select("status, stages, error, updated_at").eq("id", analysisId).maybeSingle(),
@@ -63,13 +85,26 @@ export const GET = authed<{ id: string }>("analyses.events", async (ctx) => {
             send("reconnect", { after: lastId });
             break;
           }
+          // Comment frames keep proxies from closing the stream and reveal a gone client sooner.
+          if (Date.now() - lastPing > PING_MS) {
+            lastPing = Date.now();
+            ping();
+          }
           await new Promise((r) => setTimeout(r, POLL_MS));
         }
       } catch {
         send("error", { message: "Live updates were interrupted." });
       } finally {
-        controller.close();
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          /* already closed by the client */
+        }
       }
+    },
+    cancel() {
+      closed = true;
     },
   });
 

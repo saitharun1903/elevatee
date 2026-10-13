@@ -23,7 +23,7 @@ export interface WorkspaceProps {
   ws: JobWorkspace;
   tab: TabKey;
   locale: string;
-  timezone: string | null;
+  timezone: string;
   openPractice?: boolean;
 }
 
@@ -134,6 +134,9 @@ export function Workspace({ ws, tab, locale, timezone, openPractice }: Workspace
     }, false);
 
   const applyUrl = j.applicationUrl ?? j.canonicalUrl;
+  // Show the real status once tracked; a tick only for statuses that mean "still in the running".
+  const appStatus = ws.application?.status ?? "interested";
+  const appliedLabel = `${t(`appStatus.${appStatus as "applied"}`)}${["applied", "assessment", "interview", "final_round", "offer"].includes(appStatus) ? " ✓" : ""}`;
   const onApply = () =>
     act("apply", async () => {
       if (applyUrl) window.open(applyUrl, "_blank", "noopener,noreferrer");
@@ -146,7 +149,7 @@ export function Workspace({ ws, tab, locale, timezone, openPractice }: Workspace
     j.location,
     j.workplaceType ? t(`workspace.meta.workplace_${j.workplaceType}`) : null,
     j.employmentType ? humanize(j.employmentType) : null,
-    j.postedAt ? t("workspace.meta.postedAt", { date: formatDate(j.postedAt, locale) ?? "" }) : null,
+    j.postedAt ? t("workspace.meta.postedAt", { date: formatDate(j.postedAt, locale, undefined, timezone) ?? "" }) : null,
   ].filter(Boolean);
 
   const tabHref = (k: TabKey) => (k === "overview" ? `/jobs/${ws.id}` : `/jobs/${ws.id}?tab=${k}`);
@@ -182,11 +185,11 @@ export function Workspace({ ws, tab, locale, timezone, openPractice }: Workspace
           {ws.application && ws.application.status !== "interested" ? (
             applyUrl ? (
               <a href={applyUrl} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary")}>
-                {t("workspace.actions.applied")} ↗
+                {appliedLabel} ↗
               </a>
             ) : (
               <Link href={tabHref("application")} className={buttonClass("secondary")}>
-                {t("workspace.actions.applied")}
+                {appliedLabel}
               </Link>
             )
           ) : (

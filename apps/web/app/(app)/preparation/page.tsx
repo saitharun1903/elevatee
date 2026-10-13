@@ -46,7 +46,7 @@ export default async function PreparationPage() {
                   <span>
                     <span className="block font-medium">{p.title}</span>
                     <span className="block text-small text-ink-3">
-                      {[p.jobs?.title, p.jobs?.company].filter(Boolean).join(" · ")} · {formatDate(p.created_at, viewer.locale)}
+                      {[p.jobs?.title, p.jobs?.company].filter(Boolean).join(" · ")} · {formatDate(p.created_at, viewer.locale, undefined, viewer.timezone)}
                     </span>
                   </span>
                   <span className="flex items-center gap-3 text-small text-ink-3">

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { ThemeSync } from "@/components/theme-sync";
+import { TimezoneCookie } from "@/components/timezone-cookie";
+import { cookies } from "next/headers";
 import { getSessionUser } from "@/lib/server/auth";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <AppShell email={user.email}>
       <ThemeSync theme={theme} />
+      <TimezoneCookie current={(await cookies()).get("tz")?.value ? decodeURIComponent((await cookies()).get("tz")!.value) : null} />
       {children}
     </AppShell>
   );

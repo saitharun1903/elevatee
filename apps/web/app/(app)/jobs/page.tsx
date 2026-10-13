@@ -23,7 +23,9 @@ const VIEWS = [
 export default async function JobsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const viewer = await getViewer();
-  const q = JobListQuery.parse({ view: sp.view, q: sp.q || undefined, sort: sp.sort, status: sp.status || undefined, limit: 100 });
+  // Bad or hand-edited URL params fall back to defaults instead of crashing the page.
+  const parsed = JobListQuery.safeParse({ view: sp.view, q: sp.q?.slice(0, 200) || undefined, sort: sp.sort, status: sp.status || undefined, limit: 100 });
+  const q = parsed.success ? parsed.data : JobListQuery.parse({ limit: 100 });
   const jobs = await listJobs(viewer.db, q);
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -115,7 +117,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
                   <td className="py-3.5 pr-4 text-small text-ink-2">{j.location ?? "—"}</td>
                   <td className="py-3.5 pr-4 text-small">{j.applicationStatus ? t(`appStatus.${j.applicationStatus as "applied"}`) : <span className="text-ink-4">—</span>}</td>
                   <td className="py-3.5 pr-4 text-right font-mono text-small tnum">{j.fitScore ?? <span className="text-ink-4">—</span>}</td>
-                  <td className="py-3.5 text-right text-small text-ink-3 tnum">{formatDate(j.createdAt, viewer.locale)}</td>
+                  <td className="py-3.5 text-right text-small text-ink-3 tnum">{formatDate(j.createdAt, viewer.locale, undefined, viewer.timezone)}</td>
                 </tr>
               ))}
             </tbody>

@@ -487,6 +487,7 @@ export const en = {
     abandoned: "Ended early",
     questionOf: "Question {n} of {total}",
     resume: "Continue",
+    stalled: "Your last answer was saved, but the next question didn't load.",
     contextNote: "Uses this job's requirements{gaps}{research}.",
     contextGaps: ", your gaps",
     contextResearch: ", reported questions",

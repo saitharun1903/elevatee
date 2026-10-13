@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { ApplicationStatus, type InterviewQuestion, type ResearchClaim } from "@elevate/core";
 import type { JobWorkspace } from "@/lib/server/services/workspace";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -23,7 +23,7 @@ export { TAB_KEYS, type TabKey } from "./tab-keys";
 interface PanelProps {
   ws: JobWorkspace;
   locale: string;
-  timezone: string | null;
+  timezone: string;
   running: boolean;
 }
 
@@ -668,7 +668,7 @@ function Questions({ ws, running }: PanelProps) {
 // Company
 // ---------------------------------------------------------------------------
 
-function Company({ ws, locale, running }: PanelProps) {
+function Company({ ws, locale, timezone, running }: PanelProps) {
   const { busy, error, run } = useAction();
   const r = ws.research;
   const claims = r?.claims.filter((c) => c.scope === "company") ?? [];
@@ -728,7 +728,7 @@ function Company({ ws, locale, running }: PanelProps) {
                 <span className="flex flex-wrap gap-x-3 text-meta text-ink-3">
                   <span>{s.domain}</span>
                   <span>{t(`workspace.company.sourceKind_${s.kind}`)}</span>
-                  {s.publishedAt ? <span>{formatDate(s.publishedAt, locale)}</span> : null}
+                  {s.publishedAt ? <span>{formatDate(s.publishedAt, locale, undefined, timezone)}</span> : null}
                   {s.scope === "role" ? <span>{t("workspace.questions.similar")}</span> : null}
                 </span>
               </li>
@@ -744,7 +744,7 @@ function Company({ ws, locale, running }: PanelProps) {
 // Preparation
 // ---------------------------------------------------------------------------
 
-function Preparation({ ws, locale }: PanelProps) {
+function Preparation({ ws, locale, timezone }: PanelProps) {
   const router = useRouter();
   const { busy, error, run } = useAction();
   const [days, setDays] = useState<number | "custom">(7);
@@ -815,7 +815,7 @@ function Preparation({ ws, locale }: PanelProps) {
                   <Link href={`/preparation/${p.id}`} className="flex flex-col gap-1 py-3">
                     <span className="font-medium">{p.title}</span>
                     <span className="text-meta text-ink-3">
-                      {t("prep.progress", { done: p.done, total: p.total })} · {formatDate(p.createdAt, locale)} · {p.personalized ? t("workspace.preparation.personalized") : t("workspace.preparation.roleOnly")}
+                      {t("prep.progress", { done: p.done, total: p.total })} · {formatDate(p.createdAt, locale, undefined, timezone)} · {p.personalized ? t("workspace.preparation.personalized") : t("workspace.preparation.roleOnly")}
                     </span>
                   </Link>
                 </li>
@@ -838,7 +838,12 @@ function Application({ ws, locale, timezone }: PanelProps) {
   const [notes, setNotes] = useState(app?.notes ?? "");
   const [round, setRound] = useState("");
   const [when, setWhen] = useState("");
-  const tz = timezone ?? (typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC");
+  // datetime-local is wall-clock time in the browser's zone, so store and label that zone.
+  const tz = useSyncExternalStore(
+    () => () => {},
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    () => timezone,
+  );
 
   const setStatus = (status: string) => run(() => api(`/api/v1/jobs/${ws.id}/application`, { method: "PUT", json: { status } }));
 
@@ -872,7 +877,7 @@ function Application({ ws, locale, timezone }: PanelProps) {
         </Field>
         {app.appliedAt ? (
           <p className="text-small text-ink-2">
-            {t("workspace.application.appliedOn")}: {formatDate(app.appliedAt, locale)}
+            {t("workspace.application.appliedOn")}: {formatDate(app.appliedAt, locale, undefined, timezone)}
           </p>
         ) : null}
         <Field label={t("workspace.application.notes")}>

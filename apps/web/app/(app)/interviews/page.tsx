@@ -66,7 +66,7 @@ export default async function InterviewsPage() {
                     <span className="block text-small text-ink-3">{[m.jobs?.title, m.jobs?.company].filter(Boolean).join(" · ")}</span>
                   </span>
                   <span className="text-small text-ink-3">
-                    {t(`interviews.${m.status as "completed"}`)} · {t("interviews.answers", { n: m.mock_interview_turns.filter((x) => x.role === "candidate").length })} · {formatDate(m.created_at, viewer.locale)}
+                    {t(`interviews.${m.status as "completed"}`)} · {t("interviews.answers", { n: m.mock_interview_turns.filter((x) => x.role === "candidate").length })} · {formatDate(m.created_at, viewer.locale, undefined, viewer.timezone)}
                   </span>
                 </Link>
               </li>

@@ -5,6 +5,7 @@ import {
   isTerminal,
   parseResumeWithAI,
   runAnalysisPipeline,
+  withTimeout,
   runCandidatePipeline,
   type AnalysisEventType,
   type AnalysisStatus,
@@ -270,6 +271,11 @@ export async function startAnalysis(
     })
     .select("id")
     .single<{ id: string }>();
+  if (error?.code === "23505") {
+    // Another request started an analysis for this job a moment ago: join it instead.
+    const active = await latestAnalysis(ctx.db, jobId);
+    if (active && !isTerminal(active.status)) return { analysisId: active.id, reused: true };
+  }
   if (error || !created) throw new ElevateError("internal", "Couldn't start the analysis.");
   const analysisId = created.id;
 
@@ -280,6 +286,8 @@ export async function startAnalysis(
     const db = createTokenClient(token);
     const store = new SupabaseAnalysisStore(db, userId, jobId, analysisId);
     const deps = {
+      // Leaves room for the 45 s resume re-parse within maxDuration = 300.
+      totalTimeoutMs: 230_000,
       ai: ai(),
       research: research(),
       store,
@@ -292,7 +300,8 @@ export async function startAnalysis(
       // education can be compared. Only the parse fields change; the source text is immutable.
       if (resume && resume.parse_status !== "parsed" && deps.ai) {
         try {
-          const out = await parseResumeWithAI(deps.ai, resume.raw_text);
+          // Capped so re-parse + pipeline stay inside the route's 300 s limit.
+          const out = await withTimeout("Resume parsing", 45_000, (signal) => parseResumeWithAI(deps.ai!, resume.raw_text, signal));
           const { error } = await db
             .from("resume_versions")
             .update({ parsed: out.parsed, parse_status: "parsed", parse_warnings: out.warnings, parse_provider: `${out.provider}:${out.model}` })

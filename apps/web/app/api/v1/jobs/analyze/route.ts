@@ -12,7 +12,9 @@ export const POST = authed("jobs.analyze", async (ctx) => {
   assertLooksLikeJob(result);
   const { jobId, deduplicated, changed } = await upsertJob(ctx.db, ctx.userId, result, via);
   // Same job, same content: reuse the existing analysis instead of paying for a new one.
-  const previous = deduplicated && !changed ? await latestAnalysis(ctx.db, jobId) : null;
+  // Failed or timed-out analyses are retried rather than handed back.
+  const latest = deduplicated && !changed ? await latestAnalysis(ctx.db, jobId) : null;
+  const previous = latest && latest.status !== "FAILED" && latest.status !== "TIMEOUT" ? latest : null;
   const { analysisId, reused } = previous ? { analysisId: previous.id, reused: true } : await startAnalysis(ctx, jobId, "full");
   return json(
     ctx.req,

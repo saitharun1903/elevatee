@@ -140,6 +140,7 @@ export async function startMockInterview(ctx: { db: Db; userId: string }, jobId:
     resumeSummary: null,
   };
   const first = await interviewStep(provider, context, []);
+  if (!first.nextQuestion?.trim()) throw new ElevateError("ai_output_invalid", "The interviewer didn't return a first question. Try again.");
   const { data: session, error } = await ctx.db
     .from("mock_interviews")
     .insert({
@@ -153,7 +154,14 @@ export async function startMockInterview(ctx: { db: Db; userId: string }, jobId:
     .select("id")
     .single<{ id: string }>();
   if (error || !session) throw new ElevateError("internal", "Couldn't start the interview.");
-  await ctx.db.from("mock_interview_turns").insert({ user_id: ctx.userId, mock_interview_id: session.id, seq: 1, role: "interviewer", content: first.nextQuestion ?? "" });
+  const { error: turnError } = await ctx.db
+    .from("mock_interview_turns")
+    .insert({ user_id: ctx.userId, mock_interview_id: session.id, seq: 1, role: "interviewer", content: first.nextQuestion! });
+  if (turnError) {
+    // Never leave a session with no question the user can answer.
+    await ctx.db.from("mock_interviews").delete().eq("id", session.id);
+    throw new ElevateError("internal", "Couldn't start the interview. Try again.");
+  }
   await trackEvent(ctx.db, ctx.userId, "mock_interview_started", { mode });
   return { id: session.id };
 }
@@ -177,7 +185,7 @@ export async function answerMockInterview(ctx: { db: Db; userId: string }, id: s
   if (!s) throw new ElevateError("not_found", "This practice session doesn't exist.");
   if (s.status !== "active") throw new ElevateError("conflict", "This practice session has ended.");
   const turns = [...(s.mock_interview_turns as { seq: number; role: Turn["role"]; content: string }[])].sort((a, b) => a.seq - b.seq);
-  if (turns.at(-1)?.role !== "interviewer") throw new ElevateError("conflict", "Waiting for the next question.");
+  if (turns.at(-1)?.role !== "interviewer") throw new ElevateError("conflict", "The next question didn't load. Choose Continue to get it.");
   const nextSeq = (turns.at(-1)?.seq ?? 0) + 1;
 
   const history: Turn[] = [...turns.map((t) => ({ role: t.role, content: t.content })), { role: "candidate", content: answer }];
@@ -191,10 +199,36 @@ export async function answerMockInterview(ctx: { db: Db; userId: string }, id: s
   }
   const { error } = await ctx.db.from("mock_interview_turns").insert(inserts);
   if (error) throw new ElevateError(error.code === "23505" ? "conflict" : "internal", error.code === "23505" ? "This answer was already submitted." : "Couldn't save your answer.");
-  if (step.done) {
-    await ctx.db.from("mock_interviews").update({ status: "completed", summary: step.summary, ended_at: new Date().toISOString() }).eq("id", id);
-  }
+  if (step.done) await completeMockInterview(ctx.db, id, step.summary);
   return { done: step.done };
+}
+
+async function completeMockInterview(db: Db, id: string, summary: unknown) {
+  const { error } = await db.from("mock_interviews").update({ status: "completed", summary, ended_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new ElevateError("internal", "Your answer was saved, but the session couldn't be closed. Choose Continue to retry.");
+}
+
+/**
+ * Recovers a session whose last turn is the candidate's (the next question or the final update
+ * failed to save). Asks the interviewer for the next step again instead of leaving it stuck.
+ */
+export async function continueMockInterview(ctx: { db: Db; userId: string }, id: string) {
+  const provider = requireAI();
+  const { data: s } = await ctx.db.from("mock_interviews").select("id, status, context, mock_interview_turns(seq, role, content)").eq("id", id).maybeSingle();
+  if (!s) throw new ElevateError("not_found", "This practice session doesn't exist.");
+  if (s.status !== "active") return { done: true };
+  const turns = [...(s.mock_interview_turns as { seq: number; role: Turn["role"]; content: string }[])].sort((a, b) => a.seq - b.seq);
+  if (turns.at(-1)?.role === "interviewer") return { done: false };
+  const step = await interviewStep(provider, s.context as InterviewContext, turns.map((t) => ({ role: t.role, content: t.content })));
+  if (!step.done && step.nextQuestion) {
+    const { error } = await ctx.db
+      .from("mock_interview_turns")
+      .insert({ user_id: ctx.userId, mock_interview_id: id, seq: (turns.at(-1)?.seq ?? 0) + 1, role: "interviewer", content: step.nextQuestion });
+    if (error && error.code !== "23505") throw new ElevateError("internal", "Couldn't load the next question.");
+    return { done: false };
+  }
+  await completeMockInterview(ctx.db, id, step.summary);
+  return { done: true };
 }
 
 export async function endMockInterview(db: Db, id: string) {
@@ -217,7 +251,11 @@ export async function upsertApplication(ctx: { db: Db; userId: string }, jobId: 
   const q = existing
     ? ctx.db.from("applications").update(values).eq("id", existing.id).select("id").single<{ id: string }>()
     : ctx.db.from("applications").insert({ user_id: ctx.userId, job_id: jobId, status: patch.status ?? "interested", ...values }).select("id").single<{ id: string }>();
-  const { data, error } = await q;
+  let { data, error } = await q;
+  if (error?.code === "23505") {
+    // A concurrent request (double click) created it first: apply this change as an update.
+    ({ data, error } = await ctx.db.from("applications").update(values).eq("job_id", jobId).select("id").single<{ id: string }>());
+  }
   if (error?.code === "23503") throw new ElevateError("not_found", "This job doesn't exist or isn't yours.");
   if (error || !data) throw new ElevateError("internal", "Couldn't update the application.");
   if (patch.status) await trackEvent(ctx.db, ctx.userId, "application_updated", { status: patch.status });

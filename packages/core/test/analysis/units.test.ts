@@ -120,3 +120,16 @@ describe("security", () => {
     expect(() => extractJsonObject("no json")).toThrow();
   });
 });
+
+describe("evidence quotes must be meaningful", () => {
+  const idx = new QuoteIndex("Experienced in patient care and IV cannulation in acute wards.");
+  it("rejects fragments as evidence", () => {
+    expect(idx.contains("in")).toBe(false);
+    expect(idx.contains("IV")).toBe(false);
+    expect(idx.contains("care")).toBe(false);
+  });
+  it("accepts real phrases, and short exact terms when asked", () => {
+    expect(idx.contains("IV cannulation in acute wards")).toBe(true);
+    expect(idx.contains("IV", { short: true })).toBe(true);
+  });
+});
